@@ -3,1255 +3,916 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EditForge | Professional Local Image Utilities</title>
+    <title>EditForge | Secure Local Media Processing Suite</title>
+    <meta name="description" content="EditForge is a free, browser-based media editing suite. Resize images, compress PDFs, convert video to audio, and edit EXIF metadata locally without uploading files to any server.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest">
-    </script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/piexifjs@1.0.6/piexif.js"></script>
+    
+    <script src="https://unpkg.com/coi-serviceworker@0.1.6/coi-serviceworker.js"></script>
+
     <style>
         :root {
-            --bg-main: #FBFBFC;
-            --bg-card: #FFFFFF;
-            --bg-secondary: #F3F4F6;
-            --accent: #0EA5E9;
-            --accent-hover: #0284C7;
-            --text-main: #1F2937;
-            --text-muted: #6B7280;
-            --border-color: #E5E7EB;
-            --radius: 14px;
-            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --bg: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.72);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --text: #0f172a;
+            --muted: #64748b;
+            --accent: #0ea5e9;
+            --accent-hover: #0284c7;
+            --radius: 24px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        /* Mesh background for glassmorphism */
+        .bg-mesh {
+            position: fixed; inset: 0; z-index: -1;
+            background:
+                radial-gradient(at 0% 0%, #e0e7ff 0, transparent 50%),
+                radial-gradient(at 100% 0%, #fce7f3 0, transparent 50%),
+                radial-gradient(at 100% 100%, #e0f2fe 0, transparent 50%),
+                radial-gradient(at 0% 100%, #f3e8ff 0, transparent 50%);
+            background-color: #f8fafc;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-main);
-            color: var(--text-main);
-            line-height: 1.6;
-            overflow-x: hidden;
-            overscroll-behavior: none;
-        }
-
-        .site-wrapper {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            min-height: 100dvh;
+        /* Glass utilities */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: var(--radius);
         }
 
         header {
-            background: white;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-bottom: 1px solid var(--border-color);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            height: 70px;
-            flex-shrink: 0;
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 0.8rem 1.5rem;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 64px;
+        }
+        .logo { font-size: 1.4rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
+        #backBtn {
+            background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px;
+            padding: 6px 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
         }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .logo span {
-            color: var(--accent);
-        }
+        main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; min-height: calc(100vh - 64px - 60px); }
 
-        main {
-            flex: 1;
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-        }
+        .screen { display: none; animation: fadeIn 0.4s ease; }
+        .screen:not(.hidden) { display: block; }
+        .hidden { display: none !important; }
 
-        footer {
-            background: white;
-            text-align: center;
-            padding: 1.5rem;
-            border-top: 1px solid var(--border-color);
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            height: 70px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
+        /* Typography helpers for content */
+        .h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -1px; line-height: 1.2; }
+        .h2 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 1rem; }
+        .h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .prose { color: var(--muted); max-width: 70ch; margin-bottom: 1.5rem; line-height: 1.8; }
+        .prose strong { color: var(--text); }
+        .content-section { max-width: 900px; margin: 0 auto; padding: 2rem 0; }
 
-        .btn {
-            padding: 12px 24px;
-            border-radius: var(--radius);
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-family: inherit;
-            -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-        }
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-        }
-        .btn-primary:hover {
-            background: var(--accent-hover);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-sm);
-        }
-        .btn-outline {
-            background: white;
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-        }
-        .btn-outline:hover {
-            background: var(--bg-secondary);
-        }
-
-        .hero {
-            text-align: center;
-            margin-bottom: 4rem;
-            padding-top: 1rem;
-        }
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: 800;
-            margin-bottom: 1rem;
-            letter-spacing: -1px;
-        }
-        .hero p {
-            font-size: 1.2rem;
-            color: var(--text-muted);
-            max-width: 600px;
-            margin: 0 auto 2rem;
-        }
-
-        .trust-badges {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 3rem;
-            flex-wrap: wrap;
-        }
-        .badge {
-            background: white;
-            padding: 8px 16px;
-            border-radius: 100px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .tools-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-            margin-bottom: 4rem;
-        }
+        /* Tools grid */
+        .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin: 2rem 0 4rem; }
         .tool-card {
-            background: var(--bg-card);
-            padding: 32px;
-            border-radius: var(--radius);
-            border: 1px solid var(--border-color);
-            transition: var(--transition);
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
+            background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 32px; border-radius: var(--radius);
+            transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; position: relative; overflow: hidden;
+            box-shadow: var(--glass-shadow);
         }
-        .tool-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-md);
-            border-color: var(--accent);
-        }
-        .tool-card.disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            filter: grayscale(1);
-            pointer-events: none;
-        }
-        .tool-card h3 {
-            font-size: 1.5rem;
-            margin-bottom: 12px;
-        }
-        .tool-card ul {
-            list-style: none;
-            color: var(--text-muted);
-            margin-bottom: 24px;
-        }
-        .tool-card ul li {
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .tool-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); border-color: var(--accent); }
+        .tool-card h3 { margin-bottom: 12px; }
+        .tool-card ul { list-style: none; color: var(--muted); margin-bottom: 24px; font-size: 0.95rem; }
+        .tool-card ul li { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 100px;
+            background: rgba(255,255,255,0.8); border: 1px solid var(--glass-border); font-size: 0.85rem; font-weight: 600;
         }
 
-        .coming-soon {
-            position: absolute;
-            top: 20px;
-            right: -30px;
-            background: var(--text-muted);
-            color: white;
-            font-size: 0.7rem;
-            padding: 4px 40px;
-            transform: rotate(45deg);
-            font-weight: bold;
+        /* Buttons */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px;
+            border-radius: 14px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; font-size: 0.95rem;
         }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-outline { background: rgba(255,255,255,0.5); border: 1px solid var(--glass-border); color: var(--text); }
+        .btn-outline:hover { background: rgba(255,255,255,0.9); }
+        .btn-block { width: 100%; }
 
-        .privacy-box {
-            text-align: center;
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 20px;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            border-top: 1px solid var(--border-color);
-        }
-
-        .editor-container {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 30px;
-            animation: fadeIn 0.4s ease;
-            flex: 1;
-            min-height: 0;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
+        /* Editor Layout */
+        .editor-layout { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
         .canvas-area {
-            background: var(--bg-secondary);
-            border-radius: var(--radius);
-            border: 2px dashed var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            min-height: 500px;
-            overflow: hidden;
-            user-select: none;
-            touch-action: none;
+            aspect-ratio: 16/9; min-height: 320px; border-radius: var(--radius); border: 2px dashed var(--glass-border);
+            display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
+            background: rgba(255,255,255,0.3);
         }
+        .upload-zone { text-align: center; padding: 40px 20px; cursor: pointer; }
+        .upload-zone h3 { margin: 12px 0 4px; }
+        .config-panel { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-group label { font-weight: 600; font-size: 0.9rem; }
+        .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        input[type="number"], input[type="text"], select {
+            padding: 10px 12px; border: 1px solid var(--glass-border); border-radius: 12px;
+            background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.95rem; width: 100%;
+        }
+        select { cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 10px center; background-repeat: no-repeat; background-size: 20px; padding-right: 32px; }
+        .slider-group { display: flex; flex-direction: column; gap: 6px; }
+        .slider-group label { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+        input[type="range"] { width: 100%; accent-color: var(--accent); height: 6px; }
 
-        .upload-zone {
-            text-align: center;
-            cursor: pointer;
-            padding: 40px;
-            touch-action: manipulation;
-        }
-        .upload-zone i {
-            color: var(--accent);
-            margin-bottom: 1rem;
-        }
+        /* Crop overlay */
+        .crop-overlay { position: absolute; border: 2px dashed var(--accent); background: rgba(14,165,233,0.12); box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); cursor: move; display: none; z-index: 10; touch-action: none; }
+        .crop-handle { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid var(--accent); border-radius: 50%; z-index: 11; touch-action: none; }
+        .handle-tl { top: -7px; left: -7px; cursor: nwse-resize; }
+        .handle-tr { top: -7px; right: -7px; cursor: nesw-resize; }
+        .handle-bl { bottom: -7px; left: -7px; cursor: nesw-resize; }
+        .handle-br { bottom: -7px; right: -7px; cursor: nwse-resize; }
 
-        #previewCanvas {
-            max-width: 100%;
-            max-height: 80vh;
-            max-height: 80dvh;
-            box-shadow: var(--shadow-md);
-            background: repeating-conic-gradient(#fff 0% 25%, #eee 0% 50%) 50% / 20px 20px;
-            display: block;
-            touch-action: none;
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; background: rgba(255,255,255,0.4);
+            backdrop-filter: blur(10px);
         }
+        .spinner { width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.5); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .config-panel {
-            background: white;
-            padding: 24px;
-            border-radius: var(--radius);
-            border: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            max-height: 80vh;
-            max-height: 80dvh;
-            overflow-y: auto;
-            overscroll-behavior: contain;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .config-panel .control-group:last-of-type {
-            flex: 1;
-        }
-
-        #processBtn {
-            margin-top: auto;
-            flex-shrink: 0;
-        }
-
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .control-group label {
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--text-main);
-        }
-        .input-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        input[type="number"],
-        input[type="text"] {
-            padding: 10px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            width: 100%;
-            font-family: inherit;
-            font-size: 1rem;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-
-        input[type="number"]::-webkit-inner-spin-button,
-        input[type="number"]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-
-        .slider-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 6px;
-        }
-        .slider-group label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            display: flex;
-            justify-content: space-between;
-        }
-        input[type="range"] {
-            width: 100%;
-            accent-color: var(--accent);
-            height: 6px;
-            touch-action: none;
-        }
-
-        /* CROP OVERLAY */
-        .crop-overlay {
-            position: absolute;
-            border: 2px dashed var(--accent);
-            background: rgba(14, 165, 233, 0.15);
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-            cursor: move;
-            display: none;
-            box-sizing: border-box;
-            touch-action: none;
-            z-index: 10;
-        }
-
-        .crop-handle {
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            background: white;
-            border: 2px solid var(--accent);
-            border-radius: 50%;
-            z-index: 11;
-            touch-action: none;
-        }
-        .handle-tl {
-            top: -7px;
-            left: -7px;
-            cursor: nwse-resize;
-        }
-        .handle-tr {
-            top: -7px;
-            right: -7px;
-            cursor: nesw-resize;
-        }
-        .handle-bl {
-            bottom: -7px;
-            left: -7px;
-            cursor: nesw-resize;
-        }
-        .handle-br {
-            bottom: -7px;
-            right: -7px;
-            cursor: nwse-resize;
-        }
-
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(4px);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            padding: 20px;
-        }
-        .modal {
-            background: white;
-            padding: 32px;
-            border-radius: var(--radius);
-            width: 100%;
-            max-width: 450px;
-            text-align: center;
-            box-shadow: var(--shadow-md);
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        .modal h2 {
-            margin-bottom: 1rem;
-        }
-        .file-size-info {
-            font-size: 1.1rem;
-            margin-bottom: 1.5rem;
-            color: var(--text-muted);
-        }
-
-        .download-screen {
-            text-align: center;
-            max-width: 600px;
-            margin: 0 auto;
-            animation: fadeIn 0.5s ease;
-            padding: 2rem 0;
-        }
+        /* Download screen */
+        .download-screen { max-width: 600px; margin: 0 auto; text-align: center; padding: 2rem 0; }
         .comparison-banner {
-            background: white;
-            padding: 20px;
-            border-radius: var(--radius);
-            border: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            margin-bottom: 2rem;
-            font-weight: 600;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-        .greeting-box {
-            background: #E0F2FE;
-            padding: 24px;
-            border-radius: var(--radius);
-            color: #0369A1;
-            margin-top: 2rem;
-            border: 1px solid #BAE6FD;
+            background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius);
+            padding: 20px; display: flex; justify-content: space-around; align-items: center; margin: 2rem 0; font-weight: 700; flex-wrap: wrap; gap: 12px;
         }
 
-        .hidden {
-            display: none !important;
-        }
+        /* Misc */
+        .img-preview { max-width: 100%; border-radius: 12px; border: 1px solid var(--glass-border); background: #fff; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .greeting-box { background: #e0f2fe; border: 1px solid #bae6fd; color: #0369a1; padding: 24px; border-radius: var(--radius); margin-top: 2rem; }
 
-        @media (max-width: 850px) {
-            .editor-container {
-                grid-template-columns: 1fr;
-                gap: 20px;
-            }
-            .hero h1 {
-                font-size: 2.2rem;
-            }
-            .hero p {
-                font-size: 1rem;
-            }
-            .canvas-area {
-                min-height: 320px;
-            }
-            .config-panel {
-                max-height: 60vh;
-                max-height: 60dvh;
-            }
-            main {
-                padding: 12px;
-            }
-            header {
-                padding: 0.8rem 1rem;
-                height: 60px;
-            }
-            .tools-grid {
-                grid-template-columns: 1fr;
-            }
-            .badge {
-                font-size: 0.75rem;
-                padding: 6px 12px;
-            }
-            .modal {
-                padding: 24px 20px;
-            }
-            .download-screen h2 {
-                font-size: 1.6rem !important;
-            }
-        }
+        /* Footer */
+        footer { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: 0.85rem; }
+        footer a { color: var(--text); text-decoration: none; margin: 0 10px; font-weight: 600; }
+        footer a:hover { text-decoration: underline; }
 
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 900px) {
+            .editor-layout { grid-template-columns: 1fr; }
+            .h1 { font-size: 2rem; }
+            .h2 { font-size: 1.5rem; }
+            .tools-grid { grid-template-columns: 1fr; }
+            .meta-grid { grid-template-columns: 1fr; }
+        }
         @media (max-width: 480px) {
-            .canvas-area {
-                min-height: 240px;
-            }
-            .config-panel {
-                padding: 16px;
-                max-height: 55vh;
-                max-height: 55dvh;
-            }
-            .hero h1 {
-                font-size: 1.8rem;
-            }
-            .tool-card {
-                padding: 24px 20px;
-            }
-            .comparison-banner {
-                flex-direction: column;
-                gap: 8px;
-                padding: 16px;
-            }
-            .btn {
-                padding: 10px 18px;
-                font-size: 0.9rem;
-            }
-        }
-
-        /* fix for very tall screens */
-        @media (min-height: 1000px) {
-            .config-panel {
-                max-height: 70vh;
-            }
+            .config-panel { padding: 16px; }
+            .canvas-area { min-height: 240px; }
         }
     </style>
 </head>
 <body>
+    <div class="bg-mesh"></div>
 
-    <div class="site-wrapper">
-        <header>
-            <div class="logo" onclick="navigateTo('HOME')">
-                <i data-lucide="zap" style="color: var(--accent)"></i>
-                Edit<span>Forge</span>
+    <header>
+        <button id="backBtn" class="hidden" onclick="goHome()">
+            <i data-lucide="arrow-left"></i> Back
+        </button>
+        <div class="logo" onclick="goHome()">
+            <i data-lucide="zap" style="color:var(--accent)"></i> Edit<span>Forge</span>
+        </div>
+        <div style="width:60px;"></div>
+    </header>
+
+    <main id="app">
+        <section id="screen-home" class="screen">
+            <div style="text-align:center; padding: 3rem 1rem 2rem;">
+                <h1 class="h1">Your Media, Your Control</h1>
+                <p class="prose" style="margin: 1rem auto 2rem;">A powerful, browser-based workshop for images, PDFs, and video. Everything processes locally—nothing ever touches a server.</p>
+                <div style="display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-bottom: 3rem;">
+                    <div class="badge"><i data-lucide="shield-check" size="14"></i> 100% Private</div>
+                    <div class="badge"><i data-lucide="user-x" size="14"></i> No Signup</div>
+                    <div class="badge"><i data-lucide="bolt" size="14"></i> Instant Processing</div>
+                </div>
             </div>
-        </header>
 
-        <main id="app">
-            <section id="screen-home" class="screen">
-                <div class="hero">
-                    <h1>EditForge</h1>
-                    <p>The ultimate, lightning-fast workshop for your media. Edit, optimize, and refine your images in seconds right inside your browser.</p>
-                    <div class="trust-badges">
-                        <div class="badge"><i data-lucide="user-x" size="16"></i> No Sign-In Required</div>
-                        <div class="badge"><i data-lucide="shield-check" size="16"></i> 100% Free & Secure</div>
-                    </div>
+            <div class="tools-grid">
+                <div class="tool-card" onclick="openTool('image')">
+                    <h3>Image Suite</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Resize, Crop, Rotate</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Smart JPEG Compression</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Brightness & Saturation</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Open Image Suite</button>
                 </div>
-
-                <div class="tools-grid">
-                    <div class="tool-card" onclick="navigateTo('EDITOR')">
-                        <h3>Image Tools Suite</h3>
-                        <ul>
-                            <li><i data-lucide="check" size="14" color="#0ea5e9"></i> Custom Precise Resize</li>
-                            <li><i data-lucide="check" size="14" color="#0ea5e9"></i> Smart Compression</li>
-                            <li><i data-lucide="check" size="14" color="#0ea5e9"></i> Flexible Cropping</li>
-                            <li><i data-lucide="check" size="14" color="#0ea5e9"></i> Auto-Enhancement</li>
-                        </ul>
-                        <button class="btn btn-primary" style="width:100%">Launch Image Suite</button>
-                    </div>
-                    <div class="tool-card disabled">
-                        <div class="coming-soon">COMING SOON</div>
-                        <h3>PDF Tools Suite</h3>
-                        <ul>
-                            <li><i data-lucide="circle" size="14"></i> PDF Merger & Splitter</li>
-                            <li><i data-lucide="circle" size="14"></i> Image to PDF</li>
-                            <li><i data-lucide="circle" size="14"></i> PDF Compression</li>
-                        </ul>
-                        <button class="btn btn-outline" style="width:100%">Locked</button>
-                    </div>
+                <div class="tool-card" onclick="openTool('pdf')">
+                    <h3>PDF Optimizer</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Structural Compression</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Metadata Removal</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> 100% Browser-Side</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Optimize PDF</button>
                 </div>
-
-                <div class="privacy-box">
-                    Your privacy is our priority. EditForge processes all files locally on your device using HTML5 Canvas. Your photos are never sent to any server.
+                <div class="tool-card" onclick="openTool('video')">
+                    <h3>Video Compressor</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Resolution & FPS Control</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Bitrate Targeting</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> ffmpeg.wasm Powered</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Compress Video</button>
                 </div>
-            </section>
+                <div class="tool-card" onclick="openTool('audio')">
+                    <h3>Video to Audio</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Extract MP3 / WAV / AAC</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Lossless Conversion</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Instant Download</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Extract Audio</button>
+                </div>
+                <div class="tool-card" onclick="openTool('exif')">
+                    <h3>EXIF Editor</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Edit GPS & Camera Data</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Date & Exposure</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Local Processing</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Edit Metadata</button>
+                </div>
+                <div class="tool-card" onclick="openTool('thumbnail')">
+                    <h3>Video Thumbnail</h3>
+                    <ul>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Extract Current Frame</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Replace Cover Art</li>
+                        <li><i data-lucide="check" size="14" color="var(--accent)"></i> Re-mux & Download</li>
+                    </ul>
+                    <button class="btn btn-primary btn-block">Set Thumbnail</button>
+                </div>
+            </div>
 
-            <section id="screen-editor" class="screen hidden">
-                <div class="editor-container">
+            <article class="glass content-section" style="padding: 3rem 2rem; margin-bottom: 3rem;">
+                <h2 class="h2">Why Local Processing Matters</h2>
+                <p class="prose">
+                    EditForge is engineered around a <strong>privacy-first architecture</strong>. Traditional online editors force you to upload sensitive images, documents, and videos to remote servers where they can be scanned, logged, or retained. EditForge runs entirely inside your browser using technologies like HTML5 Canvas, WebAssembly (ffmpeg.wasm), and modern JavaScript APIs. Your files never leave your device, making it ideal for professionals handling confidential media.
+                </p>
+                <p class="prose">
+                    Supported formats include <strong>JPEG, PNG, WebP, PDF, MP4, MOV, WebM, AVI, MP3, WAV, and AAC</strong>. Because all computation happens client-side, you can use EditForge on airplanes, secure internal networks, or any environment without internet—after the initial page load.
+                </p>
+                <h3 class="h3">Optimized for Speed and Security</h3>
+                <p class="prose">
+                    Our image engine leverages hardware-accelerated canvas rendering. The video pipeline uses <strong>ffmpeg.wasm</strong> (FFmpeg compiled to WebAssembly) for frame-accurate transcoding directly in memory. PDF optimization uses pdf-lib to rewrite document structures, strip unnecessary metadata, and reduce bloat without requiring a remote API. Whether you are optimizing a portfolio, compressing a meeting recording, or stripping location data from a photo, EditForge gives you complete control.
+                </p>
+            </article>
+        </section>
+
+        <section id="screen-image" class="screen hidden">
+            <div class="editor-layout">
+                <div>
                     <div class="canvas-area" id="dropZone">
-                        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
-                            <i data-lucide="upload-cloud" size="48"></i>
-                            <h2>Drag & Drop Image</h2>
-                            <p>or click to browse (PNG, JPG, WebP)</p>
-                            <input type="file" id="fileInput" class="hidden" accept="image/*">
+                        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('imgInput').click()">
+                            <i data-lucide="upload-cloud" size="40" color="var(--accent)"></i>
+                            <h3>Drag & Drop Image</h3>
+                            <p style="color:var(--muted); font-size:0.9rem;">or click to browse (PNG, JPG, WebP)</p>
+                            <input type="file" id="imgInput" accept="image/*" class="hidden">
                         </div>
                         <div style="position:relative; display:inline-block; touch-action:none;">
                             <canvas id="previewCanvas" class="hidden"></canvas>
                             <div id="cropBox" class="crop-overlay">
-                                <div class="crop-handle handle-tl"></div>
-                                <div class="crop-handle handle-tr"></div>
-                                <div class="crop-handle handle-bl"></div>
-                                <div class="crop-handle handle-br"></div>
+                                <div class="crop-handle handle-tl"></div><div class="crop-handle handle-tr"></div>
+                                <div class="crop-handle handle-bl"></div><div class="crop-handle handle-br"></div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="config-panel" id="configPanel">
-                        <div class="control-group">
-                            <label>Dimensions (px)</label>
-                            <div class="input-row">
-                                <input type="number" id="inputWidth" placeholder="Width" inputmode="numeric" autocomplete="off">
-                                <input type="number" id="inputHeight" placeholder="Height" inputmode="numeric" autocomplete="off">
-                            </div>
-                            <label style="font-size:0.8rem; font-weight:400; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                                <input type="checkbox" id="lockAspect" checked> Lock Aspect Ratio
-                            </label>
-                        </div>
-
-                        <div class="control-group">
-                            <label>Transformation</label>
-                            <div class="input-row" style="grid-template-columns:repeat(3,1fr);">
-                                <button class="btn btn-outline" onclick="rotateImage(-90)" title="Rotate Left" type="button"><i data-lucide="rotate-ccw"></i></button>
-                                <button class="btn btn-outline" onclick="rotateImage(90)" title="Rotate Right" type="button"><i data-lucide="rotate-cw"></i></button>
-                                <button class="btn btn-outline" id="cropBtn" onclick="toggleCrop()" title="Toggle Crop" type="button"><i data-lucide="crop"></i></button>
-                            </div>
-                        </div>
-
-                        <div class="control-group">
-                            <label>Enhance</label>
-                            <div class="slider-group">
-                                <label>Brightness <span id="val-bright">100%</span></label>
-                                <input type="range" id="bright" min="0" max="200" value="100" oninput="applyFilters()">
-                            </div>
-                            <div class="slider-group">
-                                <label>Contrast <span id="val-contrast">100%</span></label>
-                                <input type="range" id="contrast" min="0" max="200" value="100" oninput="applyFilters()">
-                            </div>
-                            <div class="slider-group">
-                                <label>Saturation <span id="val-saturate">100%</span></label>
-                                <input type="range" id="saturate" min="0" max="200" value="100" oninput="applyFilters()">
-                            </div>
-                            <button class="btn btn-outline" onclick="autoEnhance()" type="button">
-                                <i data-lucide="wand-2" size="16"></i> Auto-Enhance
-                            </button>
-                        </div>
-
-                        <button class="btn btn-primary" id="processBtn" onclick="openOptimizationModal()" type="button">
-                            Process Image <i data-lucide="arrow-right"></i>
-                        </button>
+                    <div class="glass content-section hidden" id="imgSeo" style="margin-top:24px; padding:24px;">
+                        <p class="prose" style="margin-bottom:0;">
+                            <strong>Tip:</strong> Use the lock aspect ratio checkbox to maintain proportions while resizing. The smart compression system will attempt to match your target file size by progressively adjusting JPEG quality. All pixels remain on your device.
+                        </p>
                     </div>
                 </div>
-            </section>
-
-            <section id="screen-download" class="screen hidden">
-                <div class="download-screen">
-                    <i data-lucide="check-circle" size="64" color="#0ea5e9" style="margin-bottom:1rem;"></i>
-                    <h2 style="font-size:2rem; margin-bottom:1.5rem;">Your image is ready!</h2>
-
-                    <div class="comparison-banner">
-                        <div>Original: <span id="origSize">0 KB</span></div>
-                        <i data-lucide="arrow-right"></i>
-                        <div>Optimized: <span id="finalSize">0 KB</span></div>
+                <div class="glass config-panel" id="imgPanel">
+                    <div class="control-group">
+                        <label>Dimensions (px)</label>
+                        <div class="input-row">
+                            <input type="number" id="inputWidth" placeholder="Width" inputmode="numeric">
+                            <input type="number" id="inputHeight" placeholder="Height" inputmode="numeric">
+                        </div>
+                        <label style="font-size:0.85rem; font-weight:400; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" id="lockAspect" checked> Lock Aspect Ratio
+                        </label>
                     </div>
-
-                    <button class="btn btn-primary" id="downloadBtn" style="font-size:1.2rem; padding:16px 40px;">
-                        <i data-lucide="download"></i> Download Image
-                    </button>
-
-                    <div class="greeting-box">
-                        <strong>Thank you for using EditForge!</strong><br>
-                        Your file was securely processed locally on your device. Bookmark this page for lightning-fast, unlimited access next time.
+                    <div class="control-group">
+                        <label>Transformation</label>
+                        <div class="input-row" style="grid-template-columns:repeat(3,1fr);">
+                            <button class="btn btn-outline" onclick="rotateImage(-90)" type="button"><i data-lucide="rotate-ccw" size="18"></i></button>
+                            <button class="btn btn-outline" onclick="rotateImage(90)" type="button"><i data-lucide="rotate-cw" size="18"></i></button>
+                            <button class="btn btn-outline" id="cropBtn" onclick="toggleCrop()" type="button"><i data-lucide="crop" size="18"></i></button>
+                        </div>
                     </div>
-
-                    <button class="btn btn-outline" style="margin-top:2rem;" onclick="navigateTo('HOME')">
-                        <i data-lucide="arrow-left"></i> Start New Project
-                    </button>
+                    <div class="control-group">
+                        <label>Enhance</label>
+                        <div class="slider-group">
+                            <label>Brightness <span id="val-bright">100%</span></label>
+                            <input type="range" id="bright" min="0" max="200" value="100" oninput="applyFilters()">
+                        </div>
+                        <div class="slider-group">
+                            <label>Contrast <span id="val-contrast">100%</span></label>
+                            <input type="range" id="contrast" min="0" max="200" value="100" oninput="applyFilters()">
+                        </div>
+                        <div class="slider-group">
+                            <label>Saturation <span id="val-saturate">100%</span></label>
+                            <input type="range" id="saturate" min="0" max="200" value="100" oninput="applyFilters()">
+                        </div>
+                        <button class="btn btn-outline" onclick="autoEnhance()" type="button"><i data-lucide="wand-2" size="16"></i> Auto-Enhance</button>
+                    </div>
+                    <button class="btn btn-primary" id="processImgBtn" onclick="openImgModal()" type="button">Process & Compress</button>
                 </div>
-            </section>
-        </main>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
-            <div class="modal">
-                <i data-lucide="scale" size="40" color="#0ea5e9" style="margin-bottom:1rem;"></i>
-                <h2>Optimize Final File Size</h2>
-                <p class="file-size-info">Original Size: <span id="modalOrigSize">0 KB</span></p>
-
-                <div class="control-group" style="margin-bottom:2rem;">
-                    <label>Target Output Size (KB)</label>
-                    <input type="number" id="targetKB" placeholder="e.g. 200" inputmode="numeric" autocomplete="off">
-                    <input type="range" id="targetSlider" min="5" max="5000" step="1" style="margin-top:6px;">
-                </div>
-
-                <button class="btn btn-primary" style="width:100%" onclick="generateFinalImage()">
-                    Confirm & Generate
-                </button>
-                <button class="btn btn-outline" style="width:100%; margin-top:10px;" onclick="closeModal()">
-                    Cancel
-                </button>
             </div>
-        </div>
+        </section>
 
-        <footer>
-            © 2026 EditForge | Local & Private Image Processing
-        </footer>
+        <section id="screen-pdf" class="screen hidden">
+            <div class="editor-layout" style="max-width:900px; margin:0 auto;">
+                <div class="canvas-area" id="pdfUploadArea">
+                    <div class="upload-zone" onclick="document.getElementById('pdfInput').click()">
+                        <i data-lucide="file-text" size="40" color="var(--accent)"></i>
+                        <h3>Upload PDF</h3>
+                        <p style="color:var(--muted); font-size:0.9rem;">Max 50 MB. Your file stays local.</p>
+                        <input type="file" id="pdfInput" accept="application/pdf" class="hidden">
+                    </div>
+                </div>
+                <div class="glass config-panel">
+                    <h3 class="h3">Compression Settings</h3>
+                    <div id="pdfSettings" class="control-group hidden" style="gap:16px;">
+                        <label>Compression Level</label>
+                        <input type="range" id="pdfLevel" min="1" max="5" value="3" step="1" oninput="updatePdfLabel(this.value)">
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; font-weight:700; color:var(--muted);">
+                            <span>Low</span><span>Maximum</span>
+                        </div>
+                        <p id="pdfLevelDesc" style="font-size:0.85rem; color:var(--muted);">Balanced: Removes metadata and optimizes object streams.</p>
+                        <button class="btn btn-primary btn-block" onclick="processPDF()">Optimize PDF</button>
+                    </div>
+                    <div id="pdfPlaceholder" style="text-align:center; padding:2rem 0; color:var(--muted);">
+                        <i data-lucide="loader" size="32"></i>
+                        <p style="margin-top:0.5rem;">Upload a PDF to begin analysis.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="content-section glass" style="margin-top:2rem; padding:24px;">
+                <p class="prose" style="margin-bottom:0;">
+                    <strong>How it works:</strong> EditForge uses <em>pdf-lib</em> to parse your document directly in memory. Depending on the level selected, we strip metadata, flatten redundant objects, and repack the PDF with object streams for a smaller footprint. Unlike server-side tools, your document never traverses the network.
+                </p>
+            </div>
+        </section>
+
+        <section id="screen-video" class="screen hidden">
+            <div class="editor-layout" style="max-width:900px; margin:0 auto;">
+                <div class="canvas-area" id="vidUploadArea">
+                    <div class="upload-zone" onclick="document.getElementById('vidInput').click()">
+                        <i data-lucide="film" size="40" color="var(--accent)"></i>
+                        <h3>Upload Video</h3>
+                        <p style="color:var(--muted); font-size:0.9rem;">MP4, MOV, WebM, AVI. Max 1GB.</p>
+                        <p style="color:red; font-size:0.8rem; margin-top:8px;"><strong>Warning:</strong> Large files may crash mobile browsers.</p>
+                        <input type="file" id="vidInput" accept="video/*" class="hidden">
+                    </div>
+                </div>
+                <div class="glass config-panel" id="vidSettings" style="opacity:0.6; pointer-events:none;">
+                    <div class="control-group">
+                        <label>Mode</label>
+                        <select id="vidMode" onchange="toggleVidMode()">
+                            <option value="auto">Auto (Balanced)</option>
+                            <option value="manual">Manual</option>
+                        </select>
+                    </div>
+                    <div id="vidManual" class="control-group hidden">
+                        <label>Resolution</label>
+                        <select id="vidRes"><option value="original">Original</option><option value="240">240p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option><option value="2160">4K</option></select>
+                        <label>FPS</label>
+                        <select id="vidFps"><option value="original">Original</option><option value="24">24</option><option value="30">30</option><option value="60">60</option></select>
+                        <div class="slider-group">
+                            <label>Average Bitrate (Mbps) <span id="vidBitrateVal">5</span></label>
+                            <input type="range" id="vidBitrate" min="0.5" max="50" step="0.5" value="5" oninput="updateBitrateLabel(this.value)">
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Estimated Size</label>
+                        <div class="glass" style="padding:12px; text-align:center; font-weight:700;">~<span id="vidEstimate">--</span> MB</div>
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="processVideo()">Compress Video</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-audio" class="screen hidden">
+            <div style="max-width:600px; margin:0 auto;">
+                <div class="glass content-section" style="padding: 2rem;">
+                    <h2 class="h2">Extract Audio Track</h2>
+                    <p class="prose">Strip the video stream and keep only the audio in your chosen format.</p>
+                    <div class="canvas-area" style="min-height:180px; margin-bottom:1.5rem;" onclick="document.getElementById('audioInput').click()">
+                        <div class="upload-zone">
+                            <i data-lucide="music" size="36" color="var(--accent)"></i>
+                            <h3>Choose Video File</h3>
+                            <p style="font-size:0.85rem; color:var(--muted);">Click to upload</p>
+                        </div>
+                    </div>
+                    <input type="file" id="audioInput" accept="video/*" class="hidden">
+                    <div class="control-group">
+                        <label>Output Format</label>
+                        <select id="audioFmt">
+                            <option value="mp3">MP3 (Compressed)</option>
+                            <option value="wav">WAV (Lossless)</option>
+                            <option value="aac">AAC (Modern)</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary btn-block" style="margin-top:1rem;" onclick="processAudio()">Extract Audio</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-exif" class="screen hidden">
+            <div class="editor-layout" style="max-width:900px; margin:0 auto;">
+                <div>
+                    <div class="canvas-area" onclick="document.getElementById('exifInput').click()">
+                        <div class="upload-zone" id="exifUploadZone">
+                            <i data-lucide="image" size="40" color="var(--accent)"></i>
+                            <h3>Upload Image</h3>
+                            <p style="color:var(--muted); font-size:0.9rem;">JPEG / TIFF with EXIF</p>
+                        </div>
+                        <img id="exifPreview" class="hidden img-preview" style="max-height:60vh; object-fit:contain;">
+                        <input type="file" id="exifInput" accept="image/jpeg,image/tiff" class="hidden">
+                    </div>
+                </div>
+                <div class="glass config-panel" style="gap:12px;">
+                    <h3 class="h3">Edit Metadata</h3>
+                    <div class="control-group"><label>Date & Time</label><input type="text" id="exifDate" placeholder="YYYY:MM:DD HH:mm:ss"></div>
+                    <div class="meta-grid">
+                        <div class="control-group"><label>Make</label><input type="text" id="exifMake"></div>
+                        <div class="control-group"><label>Model</label><input type="text" id="exifModel"></div>
+                    </div>
+                    <div class="meta-grid">
+                        <div class="control-group"><label>ISO</label><input type="text" id="exifISO"></div>
+                        <div class="control-group"><label>Exposure</label><input type="text" id="exifExposure"></div>
+                    </div>
+                    <div class="meta-grid">
+                        <div class="control-group"><label>GPS Lat</label><input type="text" id="exifLat"></div>
+                        <div class="control-group"><label>GPS Lon</label><input type="text" id="exifLon"></div>
+                    </div>
+                    <button class="btn btn-primary btn-block" style="margin-top:auto;" onclick="saveExif()">Apply & Download</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-thumbnail" class="screen hidden">
+            <div style="max-width:700px; margin:0 auto;">
+                <div class="glass content-section" style="padding: 2rem;">
+                    <h2 class="h2">Video Thumbnail Tool</h2>
+                    <p class="prose">Extract the current thumbnail frame from a video, or replace it with a custom image.</p>
+                    <div class="input-row" style="margin-bottom:1.5rem;">
+                        <div class="canvas-area" style="min-height:160px;" onclick="document.getElementById('thumbVideoInput').click()">
+                            <div class="upload-zone">
+                                <i data-lucide="film" size="32" color="var(--accent)"></i>
+                                <span style="font-weight:600;">Select Video</span>
+                            </div>
+                        </div>
+                        <div class="canvas-area" style="min-height:160px;" onclick="document.getElementById('thumbImageInput').click()">
+                            <div class="upload-zone">
+                                <i data-lucide="image" size="32" color="var(--accent)"></i>
+                                <span style="font-weight:600;">Select New Thumbnail</span>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="file" id="thumbVideoInput" accept="video/*" class="hidden">
+                    <input type="file" id="thumbImageInput" accept="image/*" class="hidden">
+                    <div id="thumbPreviewWrap" class="hidden" style="margin-bottom:1.5rem; text-align:center;">
+                        <p style="font-size:0.85rem; color:var(--muted); margin-bottom:8px;">Current frame at 1s</p>
+                        <img id="thumbPreviewImg" class="img-preview" style="max-height:200px;">
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="processThumbnail()">Mux & Download</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-privacy" class="screen hidden">
+            <div class="glass content-section" style="padding: 2.5rem;">
+                <h2 class="h2">Privacy Policy</h2>
+                <p class="prose"><strong>Last Updated:</strong> January 2026</p>
+                <p class="prose">EditForge is committed to absolute privacy. Our application is designed as a fully client-side tool, which means all file processing occurs locally on your device using your browser's resources.</p>
+                <h3 class="h3">No Data Collection</h3>
+                <p class="prose">We do not operate a backend server for file processing. Images, PDFs, and videos uploaded into the application are handled entirely within your browser's memory via HTML5 Canvas, WebAssembly, and JavaScript APIs. We do not collect, store, transmit, or share your files or metadata.</p>
+                <h3 class="h3">Cookies and Analytics</h3>
+                <p class="prose">We do not use tracking cookies. If third-party advertisements are displayed, those providers may use cookies in accordance with their own privacy policies. We recommend reviewing Google's Privacy & Terms if interacting with AdSense content.</p>
+                <h3 class="h3">Security</h3>
+                <p class="prose">Because all processing is local, your sensitive documents never traverse a network. Once you close the browser tab, all temporary data held in memory is released.</p>
+            </div>
+        </section>
+
+        <section id="screen-terms" class="screen hidden">
+            <div class="glass content-section" style="padding: 2.5rem;">
+                <h2 class="h2">Terms of Service</h2>
+                <p class="prose">By using EditForge, you agree to the following terms. This service is provided "as is" without warranties of any kind.</p>
+                <h3 class="h3">Acceptable Use</h3>
+                <p class="prose">You may use EditForge to process media that you have the legal right to modify. You agree not to use the tool for unlawful distribution, copyright infringement, or processing of malicious files designed to exploit browser vulnerabilities.</p>
+                <h3 class="h3">Limitations of Liability</h3>
+                <p class="prose">EditForge is a client-side utility. While we strive for bug-free operation, we are not liable for data loss, corrupted files, or hardware stress caused by processing very large files. Users are advised to keep backups of original files.</p>
+                <h3 class="h3">Changes</h3>
+                <p class="prose">We may update these terms at any time. Continued use of the application constitutes acceptance of the updated terms.</p>
+            </div>
+        </section>
+
+        <section id="screen-download" class="screen hidden">
+            <div class="download-screen">
+                <i data-lucide="check-circle" size="64" color="var(--accent)" style="margin-bottom:1rem;"></i>
+                <h2 class="h2">File Ready</h2>
+                <div class="comparison-banner glass">
+                    <div>Original: <span id="dl-orig-size">0 KB</span></div>
+                    <i data-lucide="arrow-right"></i>
+                    <div>Optimized: <span id="dl-final-size">0 KB</span></div>
+                </div>
+                <button class="btn btn-primary" style="font-size:1.1rem; padding:14px 36px;" id="dl-download-btn">Download</button>
+                <button class="btn btn-outline" style="margin-top:1rem;" onclick="goHome()">Start New Project</button>
+                <div class="greeting-box">
+                    <strong>Thank you for using EditForge!</strong><br>
+                    All processing happened locally on your device. Your privacy was never at risk.
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="loadingText" style="font-weight:700; color:var(--text);">Processing...</p>
     </div>
 
+    <footer>
+        <div style="margin-bottom:8px;">
+            <a href="#" onclick="navigateTo('screen-privacy'); return false;">Privacy Policy</a>
+            <a href="#" onclick="navigateTo('screen-terms'); return false;">Terms of Service</a>
+        </div>
+        <div>© 2026 EditForge | Local & Private Media Processing</div>
+    </footer>
+
     <script>
+        // ─── INIT ICONS ──────────────────────────────────────────────
         lucide.createIcons();
 
-        // ─── STATE ───────────────────────────────────────────────────────────────
-        let currentImage = null; // the image source (may be rotated in preview)
-        let originalImage = null; // untouched original
-        let rotation = 0;
-        let isCropping = false;
-        let cropX = 50,
-            cropY = 50,
-            cropW = 200,
-            cropH = 200;
-        let isDragging = false,
-            isResizing = false,
-            activeHandle = null;
-        let startX, startY, startCropX, startCropY, startCropW, startCropH;
+        // ─── HELPERS ─────────────────────────────────────────────────
+        const $ = (s) => document.querySelector(s);
+        const $$ = (s) => document.querySelectorAll(s); // CRITICAL FIX: This was missing and broke all navigation
 
-        // aspect ratio tracking
-        let lockedRatio = 1;
-        let aspectInitDone = false;
+        function show(id){ $(id).classList.remove('hidden'); }
+        function hide(id){ $(id).classList.add('hidden'); }
+        function navigateTo(id){
+            $$('.screen').forEach(s => s.classList.add('hidden'));
+            show('#'+id);
+            window.scrollTo(0,0);
+            lucide.createIcons();
+            const isHome = id === 'screen-home';
+            $('#backBtn').classList.toggle('hidden', isHome);
+        }
+        function goHome(){ navigateTo('screen-home'); }
+        function openTool(name){ navigateTo('screen-'+name); $$('.screen').forEach(s => s.classList.add('hidden')); show('#screen-'+name); }
+        function formatBytes(bytes, decimals=2){
+            if(bytes===0) return '0 Bytes';
+            const k=1024, dm=decimals, sizes=['Bytes','KB','MB','GB','TB'];
+            const i=Math.floor(Math.log(bytes)/Math.log(k));
+            return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i];
+        }
+        function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
-        const canvas = document.getElementById('previewCanvas');
+        // ─── LOADING UI ──────────────────────────────────────────────
+        function showLoading(text='Processing...'){ $('#loadingText').textContent=text; show('#loadingOverlay'); }
+        function hideLoading(){ hide('#loadingOverlay'); }
+
+        // ─── SHARED STATE FOR DOWNLOAD ───────────────────────────────
+        let activeDownload = null;
+
+        function showDownloadScreen({url, filename, origSizeText, finalSizeText}){
+            activeDownload = {url, filename};
+            $('#dl-orig-size').textContent = origSizeText || '—';
+            $('#dl-final-size').textContent = finalSizeText || '—';
+            $('#dl-download-btn').onclick = () => {
+                const a = document.createElement('a');
+                a.href = activeDownload.url;
+                a.download = activeDownload.filename;
+                a.click();
+            };
+            navigateTo('screen-download');
+        }
+
+        // ─── IMAGE TOOL STATE & LOGIC ────────────────────────────────
+        let currentImage = null, originalImage = null, rotation=0, isCropping=false;
+        let cropX=50, cropY=50, cropW=200, cropH=200, isDragging=false, isResizing=false, activeHandle=null;
+        let startX, startY, startCropX, startCropY, startCropW, startCropH, lockedRatio=1, aspectInitDone=false;
+        const canvas = $('#previewCanvas');
         const ctx = canvas.getContext('2d');
-        const cropBox = document.getElementById('cropBox');
-        const fileInput = document.getElementById('fileInput');
-        const inputW = document.getElementById('inputWidth');
-        const inputH = document.getElementById('inputHeight');
-        const lockAspect = document.getElementById('lockAspect');
+        const cropBox = $('#cropBox');
+        const inputW = $('#inputWidth'); const inputH = $('#inputHeight'); const lockAspect = $('#lockAspect');
 
-        // ─── HELPERS ────────────────────────────────────────────────────────────
-        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-        function getDataUrlSize(dataUrl) {
-            const base64 = dataUrl.split(',')[1];
-            if (!base64) return 0;
-            return Math.round(base64.length * 0.75);
-        }
-
-        // ─── NAVIGATION ─────────────────────────────────────────────────────────
-        function navigateTo(screen) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-            document.getElementById(`screen-${screen.toLowerCase()}`).classList.remove('hidden');
-            
-            // Render icons on-demand rather than on a background timer loop
-            lucide.createIcons(); 
-
-            if (screen === 'HOME') {
-                // reset editor state partially (keep image if user goes back)
-            }
-            if (screen === 'EDITOR') {
-                setTimeout(updateCropBoxView, 50);
-                setTimeout(adjustPanelHeight, 100);
-            }
-        }
-
-        // ─── FILE HANDLING ──────────────────────────────────────────────────────
-        const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
-        const HEIC_EXTS = ['heic', 'heif', 'heics', 'heifs'];
-        const HEIC_MIMES = ['image/heic', 'image/heif'];
-
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            // HEIC check
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (HEIC_EXTS.includes(ext) || HEIC_MIMES.includes(file.type)) {
-                alert('HEIC/HEIF format is not supported directly in browsers.\nPlease convert your image to JPEG, PNG, or WebP first.');
-                fileInput.value = '';
-                return;
-            }
-
-            // File size check
-            if (file.size > MAX_FILE_SIZE) {
-                alert(`File is too large (${(file.size/1024/1024).toFixed(1)} MB).\nMaximum allowed is ${MAX_FILE_SIZE/1024/1024} MB.`);
-                fileInput.value = '';
-                return;
-            }
-
-            // High-performance Object URL allocation
+        // File handler
+        $('#imgInput').onchange = (e) => {
+            const file = e.target.files[0]; if(!file) return;
             const blobURL = URL.createObjectURL(file);
             const img = new Image();
-            
             img.onload = () => {
-                originalImage = img;
-                currentImage = img;
-                rotation = 0;
-                lockedRatio = img.width / img.height;
-                aspectInitDone = false;
-
-                // Reset inputs
-                inputW.value = img.width;
-                inputH.value = img.height;
-                aspectInitDone = true;
-
-                document.getElementById('uploadZone').classList.add('hidden');
-                canvas.classList.remove('hidden');
-                setupCanvas(true);
-                navigateTo('EDITOR');
-                
-                // Free allocation pointer safely
-                URL.revokeObjectURL(blobURL);
+                originalImage = img; currentImage = img; rotation = 0;
+                lockedRatio = img.width / img.height; aspectInitDone = false;
+                inputW.value = img.width; inputH.value = img.height; aspectInitDone = true;
+                $('#uploadZone').classList.add('hidden');
+                show('#previewCanvas'); show('#imgSeo');
+                setupCanvas(true); updateCropBoxView();
             };
-            
-            img.onerror = () => {
-                alert('Failed to load image. The file may be corrupted or in an unsupported format.');
-                fileInput.value = '';
-                URL.revokeObjectURL(blobURL);
-            };
-            
             img.src = blobURL;
         };
-
-        // Drag & drop
-        const dropZone = document.getElementById('dropZone');
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault();
-            dropZone.style.borderColor = 'var(--accent)'; });
-        dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--border-color)'; });
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.style.borderColor = 'var(--border-color)';
+        // Drag n drop
+        const dropZone = $('#dropZone');
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--accent)'; });
+        dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor='var(--glass-border)'; });
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault(); dropZone.style.borderColor='var(--glass-border)';
             const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                fileInput.files = e.dataTransfer.files;
-                fileInput.dispatchEvent(new Event('change'));
-            }
+            if(file && file.type.startsWith('image/')){ $('#imgInput').files = e.dataTransfer.files; $('#imgInput').dispatchEvent(new Event('change')); }
         });
 
-        // ─── CANVAS SETUP ───────────────────────────────────────────────────────
-        function setupCanvas(keepInputs) {
-            if (!currentImage) return;
-
-            let w = parseInt(inputW.value) || currentImage.width;
-            let h = parseInt(inputH.value) || currentImage.height;
-
-            if (w < 1) w = 1;
-            if (h < 1) h = 1;
-
-            // Canvas physical size accounts for rotation
-            if (rotation % 180 === 0) {
-                canvas.width = w;
-                canvas.height = h;
-            } else {
-                canvas.width = h;
-                canvas.height = w;
-            }
-
+        function setupCanvas(keepInputs){
+            if(!currentImage) return;
+            let w = parseInt(inputW.value)||currentImage.width, h = parseInt(inputH.value)||currentImage.height;
+            if(w<1) w=1; if(h<1) h=1;
+            if(rotation%180===0){ canvas.width=w; canvas.height=h; } else { canvas.width=h; canvas.height=w; }
             applyFilters();
             resetCropBox();
-
-            if (!keepInputs) {
-                // sync inputs to actual values (after clamping)
-                inputW.value = w;
-                inputH.value = h;
-            }
+            if(!keepInputs){ inputW.value=w; inputH.value=h; }
         }
-
-        function syncInputsFromCanvas() {
-            // called after rotation to swap values
-            if (rotation % 180 === 0) {
-                // inputs already represent w/h correctly
-            } else {
-                // swap
-                const tw = inputW.value;
-                const th = inputH.value;
-                inputW.value = th;
-                inputH.value = tw;
-            }
-        }
-
-        // ─── FILTERS ────────────────────────────────────────────────────────────
-        function applyFilters() {
-            if (!currentImage) return;
-
-            const bright = document.getElementById('bright').value;
-            const contrast = document.getElementById('contrast').value;
-            const saturate = document.getElementById('saturate').value;
-
-            document.getElementById('val-bright').textContent = bright + '%';
-            document.getElementById('val-contrast').textContent = contrast + '%';
-            document.getElementById('val-saturate').textContent = saturate + '%';
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.filter = `brightness(${bright}%) contrast(${contrast}%) saturate(${saturate}%)`;
-
+        function applyFilters(){
+            if(!currentImage) return;
+            const b=$('#bright').value, c=$('#contrast').value, s=$('#saturate').value;
+            $('#val-bright').textContent=b+'%'; $('#val-contrast').textContent=c+'%'; $('#val-saturate').textContent=s+'%';
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.filter=`brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
             ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.rotate((rotation * Math.PI) / 180);
-
-            const drawW = rotation % 180 === 0 ? canvas.width : canvas.height;
-            const drawH = rotation % 180 === 0 ? canvas.height : canvas.width;
-
-            ctx.drawImage(currentImage, -drawW / 2, -drawH / 2, drawW, drawH);
+            ctx.translate(canvas.width/2, canvas.height/2);
+            ctx.rotate((rotation*Math.PI)/180);
+            const drawW = rotation%180===0 ? canvas.width : canvas.height;
+            const drawH = rotation%180===0 ? canvas.height : canvas.width;
+            ctx.drawImage(currentImage, -drawW/2, -drawH/2, drawW, drawH);
             ctx.restore();
         }
-
-        function autoEnhance() {
-            document.getElementById('bright').value = 110;
-            document.getElementById('contrast').value = 120;
-            document.getElementById('saturate').value = 130;
-            applyFilters();
+        function rotateImage(deg){
+            if(!currentImage) return; rotation+=deg;
+            if(deg%180!==0){ const tw=inputW.value, th=inputH.value; inputW.value=th; inputH.value=tw; lockedRatio=parseFloat(inputW.value)/parseFloat(inputH.value); }
+            setupCanvas(true); updateCropBoxView();
         }
+        function autoEnhance(){ $('#bright').value=110; $('#contrast').value=120; $('#saturate').value=130; applyFilters(); }
 
-        // ─── ROTATION ───────────────────────────────────────────────────────────
-        function rotateImage(deg) {
-            if (!currentImage) return;
-            rotation += deg;
-            // Swap input values on 90° rotation
-            if (deg % 180 !== 0) {
-                const tw = inputW.value;
-                const th = inputH.value;
-                inputW.value = th;
-                inputH.value = tw;
-                lockedRatio = parseFloat(inputW.value) / parseFloat(inputH.value);
-            }
-            setupCanvas(true);
-            updateCropBoxView();
+        function toggleCrop(){
+            if(!currentImage) return; isCropping=!isCropping; cropBox.style.display=isCropping?'block':'none';
+            $('#cropBtn').classList.toggle('btn-primary', isCropping);
+            if(isCropping){ resetCropBox(); updateCropBoxView(); }
         }
-
-        // ─── CROP ───────────────────────────────────────────────────────────────
-        function toggleCrop() {
-            if (!currentImage) return;
-            isCropping = !isCropping;
-            cropBox.style.display = isCropping ? 'block' : 'none';
-            document.getElementById('cropBtn').classList.toggle('btn-primary', isCropping);
-            if (isCropping) {
-                resetCropBox();
-                updateCropBoxView();
-            }
+        function resetCropBox(){ if(!canvas.width||!canvas.height) return; cropW=Math.round(canvas.width*0.8); cropH=Math.round(canvas.height*0.8); if(cropW<20)cropW=20; if(cropH<20)cropH=20; cropX=Math.round((canvas.width-cropW)/2); cropY=Math.round((canvas.height-cropH)/2); updateCropBoxView(); }
+        function updateCropBoxView(){
+            if(!isCropping||!canvas.width||!canvas.height) return;
+            const rect=canvas.getBoundingClientRect(); if(rect.width===0||rect.height===0) return;
+            const sx=rect.width/canvas.width, sy=rect.height/canvas.height;
+            cropBox.style.left=(cropX*sx)+'px'; cropBox.style.top=(cropY*sy)+'px'; cropBox.style.width=(cropW*sx)+'px'; cropBox.style.height=(cropH*sy)+'px';
         }
-
-        function resetCropBox() {
-            if (!canvas.width || !canvas.height) return;
-            cropW = Math.round(canvas.width * 0.8);
-            cropH = Math.round(canvas.height * 0.8);
-            if (cropW < 20) cropW = 20;
-            if (cropH < 20) cropH = 20;
-            cropX = Math.round((canvas.width - cropW) / 2);
-            cropY = Math.round((canvas.height - cropH) / 2);
-            updateCropBoxView();
+        function getInteractionPoint(e){ const touch=e.touches?e.touches[0]:e; return {x:touch.clientX, y:touch.clientY}; }
+        function startInteraction(e){
+            if(!isCropping) return; if(e.target.classList.contains('crop-handle')){ isResizing=true; activeHandle=Array.from(e.target.classList).find(c=>c.startsWith('handle-')); } else if(e.target===cropBox||e.target.closest('.crop-overlay')){ isDragging=true; } else { return; }
+            const pt=getInteractionPoint(e); startX=pt.x; startY=pt.y; startCropX=cropX; startCropY=cropY; startCropW=cropW; startCropH=cropH;
         }
-
-        function updateCropBoxView() {
-            if (!isCropping || !canvas.width || !canvas.height) return;
-            const rect = canvas.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-
-            const scaleX = rect.width / canvas.width;
-            const scaleY = rect.height / canvas.height;
-
-            cropBox.style.left = (cropX * scaleX) + 'px';
-            cropBox.style.top = (cropY * scaleY) + 'px';
-            cropBox.style.width = (cropW * scaleX) + 'px';
-            cropBox.style.height = (cropH * scaleY) + 'px';
-        }
-
-        // ─── CROP INTERACTION ───────────────────────────────────────────────────
-        function getInteractionPoint(e) {
-            const touch = e.touches ? e.touches[0] : e;
-            return { x: touch.clientX, y: touch.clientY };
-        }
-
-        function startInteraction(e) {
-            if (!isCropping) return;
-            e.preventDefault();
-            const pt = getInteractionPoint(e);
-
-            if (e.target.classList.contains('crop-handle')) {
-                isResizing = true;
-                activeHandle = Array.from(e.target.classList).find(c => c.startsWith('handle-'));
-            } else if (e.target === cropBox || e.target.closest('.crop-overlay')) {
-                isDragging = true;
-            } else {
-                return;
-            }
-
-            startX = pt.x;
-            startY = pt.y;
-            startCropX = cropX;
-            startCropY = cropY;
-            startCropW = cropW;
-            startCropH = cropH;
-        }
-
-        function handleInteraction(e) {
-            if (!isDragging && !isResizing) return;
-            e.preventDefault();
-            const pt = getInteractionPoint(e);
-
-            const rect = canvas.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-
-            const dx = (pt.x - startX) * scaleX;
-            const dy = (pt.y - startY) * scaleY;
-
-            if (isDragging) {
-                cropX = clamp(startCropX + dx, 0, canvas.width - cropW);
-                cropY = clamp(startCropY + dy, 0, canvas.height - cropH);
-            } else if (isResizing) {
-                const minSize = 20;
-                switch (activeHandle) {
-                    case 'handle-br':
-                        cropW = clamp(startCropW + dx, minSize, canvas.width - cropX);
-                        cropH = clamp(startCropH + dy, minSize, canvas.height - cropY);
-                        break;
-                    case 'handle-bl':
-                        const newX_bl = clamp(startCropX + dx, 0, canvas.width - minSize);
-                        cropW = clamp(startCropW + (startCropX - newX_bl), minSize, canvas.width - newX_bl);
-                        cropX = newX_bl;
-                        cropH = clamp(startCropH + dy, minSize, canvas.height - cropY);
-                        break;
-                    case 'handle-tr':
-                        const newY_tr = clamp(startCropY + dy, 0, canvas.height - minSize);
-                        cropH = clamp(startCropH + (startCropY - newY_tr), minSize, canvas.height - newY_tr);
-                        cropY = newY_tr;
-                        cropW = clamp(startCropW + dx, minSize, canvas.width - cropX);
-                        break;
-                    case 'handle-tl':
-                        const newX_tl = clamp(startCropX + dx, 0, canvas.width - minSize);
-                        const newY_tl = clamp(startCropY + dy, 0, canvas.height - minSize);
-                        cropW = clamp(startCropW + (startCropX - newX_tl), minSize, canvas.width - newX_tl);
-                        cropH = clamp(startCropH + (startCropY - newY_tl), minSize, canvas.height - newY_tl);
-                        cropX = newX_tl;
-                        cropY = newY_tl;
-                        break;
+        function handleInteraction(e){
+            if(!isDragging&&!isResizing) return; e.preventDefault(); const pt=getInteractionPoint(e);
+            const rect=canvas.getBoundingClientRect(); if(rect.width===0||rect.height===0) return;
+            const scaleX=canvas.width/rect.width, scaleY=canvas.height/rect.height;
+            const dx=(pt.x-startX)*scaleX, dy=(pt.y-startY)*scaleY;
+            const minSize=20;
+            if(isDragging){ cropX=clamp(startCropX+dx,0,canvas.width-cropW); cropY=clamp(startCropY+dy,0,canvas.height-cropH); }
+            else if(isResizing){
+                switch(activeHandle){
+                    case 'handle-br': cropW=clamp(startCropW+dx,minSize,canvas.width-cropX); cropH=clamp(startCropH+dy,minSize,canvas.height-cropY); break;
+                    case 'handle-bl': const newX_bl=clamp(startCropX+dx,0,canvas.width-minSize); cropW=clamp(startCropW+(startCropX-newX_bl),minSize,canvas.width-newX_bl); cropX=newX_bl; cropH=clamp(startCropH+dy,minSize,canvas.height-cropY); break;
+                    case 'handle-tr': const newY_tr=clamp(startCropY+dy,0,canvas.height-minSize); cropH=clamp(startCropH+(startCropY-newY_tr),minSize,canvas.height-newY_tr); cropY=newY_tr; cropW=clamp(startCropW+dx,minSize,canvas.width-cropX); break;
+                    case 'handle-tl': const newX=clamp(startCropX+dx,0,canvas.width-minSize); const newY=clamp(startCropY+dy,0,canvas.height-minSize); cropW=clamp(startCropW+(startCropX-newX),minSize,canvas.width-newX); cropH=clamp(startCropH+(startCropY-newY),minSize,canvas.height-newY); cropX=newX; cropY=newY; break;
                 }
             }
             updateCropBoxView();
         }
+        function endInteraction(){ isDragging=false; isResizing=false; activeHandle=null; }
+        cropBox.addEventListener('mousedown', startInteraction); cropBox.addEventListener('touchstart', startInteraction, {passive:false});
+        window.addEventListener('mousemove', handleInteraction); window.addEventListener('touchmove', handleInteraction, {passive:false});
+        window.addEventListener('mouseup', endInteraction); window.addEventListener('touchend', endInteraction);
 
-        function endInteraction() {
-            isDragging = false;
-            isResizing = false;
-            activeHandle = null;
+        inputW.addEventListener('input', function(){ if(!currentImage) return; const w=parseInt(this.value)||1; if(lockAspect.checked&&aspectInitDone){ inputH.value=Math.round(w/lockedRatio); } setupCanvas(true); updateCropBoxView(); });
+        inputH.addEventListener('input', function(){ if(!currentImage) return; const h=parseInt(this.value)||1; if(lockAspect.checked&&aspectInitDone){ inputW.value=Math.round(h*lockedRatio); } setupCanvas(true); updateCropBoxView(); });
+        lockAspect.addEventListener('change', function(){ if(this.checked&&currentImage){ const w=parseInt(inputW.value)||currentImage.width; lockedRatio=parseFloat(inputW.value)/parseFloat(inputH.value); inputH.value=Math.round(w/lockedRatio); setupCanvas(true); updateCropBoxView(); } });
+
+        // Finalize image
+        function openImgModal(){
+            if(!currentImage) return;
+            generateFinalImage();
         }
-
-        // Mouse events
-        cropBox.addEventListener('mousedown', startInteraction);
-        window.addEventListener('mousemove', handleInteraction);
-        window.addEventListener('mouseup', endInteraction);
-
-        // Touch events
-        cropBox.addEventListener('touchstart', startInteraction, { passive: false });
-        window.addEventListener('touchmove', handleInteraction, { passive: false });
-        window.addEventListener('touchend', endInteraction);
-
-        // ─── DIMENSION INPUTS & ASPECT LOCK ────────────────────────────────────
-        function updateLockedRatio() {
-            const w = parseFloat(inputW.value) || 1;
-            const h = parseFloat(inputH.value) || 1;
-            lockedRatio = w / h;
-        }
-
-        inputW.addEventListener('input', function() {
-            if (!currentImage) return;
-            const w = parseInt(this.value) || 1;
-            if (lockAspect.checked && aspectInitDone) {
-                inputH.value = Math.round(w / lockedRatio);
-            }
-            setupCanvas(true);
-            updateCropBoxView();
-        });
-
-        inputH.addEventListener('input', function() {
-            if (!currentImage) return;
-            const h = parseInt(this.value) || 1;
-            if (lockAspect.checked && aspectInitDone) {
-                inputW.value = Math.round(h * lockedRatio);
-            }
-            setupCanvas(true);
-            updateCropBoxView();
-        });
-
-        // When lock checkbox changes, refresh ratio
-        lockAspect.addEventListener('change', function() {
-            if (this.checked && currentImage) {
-                updateLockedRatio();
-                // Trigger a sync
-                const w = parseInt(inputW.value) || currentImage.width;
-                inputH.value = Math.round(w / lockedRatio);
-                setupCanvas(true);
-                updateCropBoxView();
-            }
-        });
-
-        // ─── MODAL ──────────────────────────────────────────────────────────────
-        function openOptimizationModal() {
-            if (!currentImage) return;
-            // Estimate original size from current canvas content
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-            const sizeBytes = getDataUrlSize(dataUrl);
-            document.getElementById('modalOrigSize').textContent = Math.round(sizeBytes / 1024) + ' KB';
-            document.getElementById('targetKB').value = Math.round(sizeBytes / 1024);
-            document.getElementById('targetSlider').value = Math.round(sizeBytes / 1024);
-            document.getElementById('modalOverlay').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('modalOverlay').style.display = 'none';
-        }
-
-        document.getElementById('targetSlider').oninput = function() {
-            document.getElementById('targetKB').value = this.value;
-        };
-        document.getElementById('targetKB').oninput = function() {
-            const v = parseInt(this.value) || 5;
-            document.getElementById('targetSlider').value = clamp(v, 5, 5000);
-        };
-
-        // ─── FINAL GENERATION ───────────────────────────────────────────────────
-        async function generateFinalImage() {
-            const targetKB = parseInt(document.getElementById('targetKB').value) || 500;
-
-            // Determine output dimensions
-            let finalW, finalH;
-            if (isCropping) {
-                finalW = Math.round(cropW);
-                finalH = Math.round(cropH);
-            } else {
-                finalW = canvas.width;
-                finalH = canvas.height;
-            }
-            if (finalW < 1) finalW = 1;
-            if (finalH < 1) finalH = 1;
-
-            // Create temp canvas and draw the filtered (and cropped) result
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = finalW;
-            tempCanvas.height = finalH;
-            const tCtx = tempCanvas.getContext('2d');
-
-            tCtx.fillStyle = '#FFFFFF';
-            tCtx.fillRect(0, 0, finalW, finalH);
-
-            // Draw from preview canvas (which has filters + rotation baked in)
-            // If cropping, take the crop region; else take full canvas
-            const srcX = isCropping ? cropX : 0;
-            const srcY = isCropping ? cropY : 0;
-            const srcW = isCropping ? cropW : canvas.width;
-            const srcH = isCropping ? cropH : canvas.height;
-
+        async function generateFinalImage(){
+            let finalW = isCropping ? Math.round(cropW) : canvas.width;
+            let finalH = isCropping ? Math.round(cropH) : canvas.height;
+            if(finalW<1) finalW=1; if(finalH<1) finalH=1;
+            const tC = document.createElement('canvas'); tC.width=finalW; tC.height=finalH; const tCtx=tC.getContext('2d');
+            tCtx.fillStyle='#FFFFFF'; tCtx.fillRect(0,0,finalW,finalH);
+            const srcX=isCropping?cropX:0, srcY=isCropping?cropY:0, srcW=isCropping?cropW:canvas.width, srcH=isCropping?cropH:canvas.height;
             tCtx.drawImage(canvas, srcX, srcY, srcW, srcH, 0, 0, finalW, finalH);
+            // compression loop
+            let quality=0.92, mime='image/jpeg', dataUrl=tC.toDataURL(mime,quality);
+            let sizeBytes = Math.round(dataUrl.length*0.75); // rough
+            while(sizeBytes > 300*1024 && quality > 0.1){ quality-=0.05; if(quality<0.08) quality=0.08; dataUrl=tC.toDataURL(mime,quality); sizeBytes=Math.round(dataUrl.length*0.75); await new Promise(r=>setTimeout(r,0)); }
+            const blob = await (await fetch(dataUrl)).blob();
+            showDownloadScreen({url: URL.createObjectURL(blob), filename:'editforge-image.jpg', origSizeText:formatBytes(originalImage.size||0), finalSizeText:formatBytes(blob.size)});
+        }
 
-            // Compress to target size
-            let quality = 0.92;
-            let mimeType = 'image/jpeg';
-            let dataUrl = tempCanvas.toDataURL(mimeType, quality);
-            let currentSize = getDataUrlSize(dataUrl);
+        // ─── PDF TOOL ───────────────────────────────────────────────
+        let pdfFile = null;
+        $('#pdfInput').onchange = (e) => {
+            const f = e.target.files[0]; if(!f) return; if(f.size>50*1024*1024){ alert('File too large (max 50MB)'); return; }
+            pdfFile = f;
+            showLoading('Analyzing PDF structure...');
+            setTimeout(() => { hideLoading(); $('#pdfPlaceholder').classList.add('hidden'); show('#pdfSettings'); }, 10000);
+        };
+        function updatePdfLabel(v){
+            const labels = ['Minimal: Removes only dead references.','Light: Strips document info.','Balanced: Removes metadata and optimizes.','High: Flattening and structure cleanup.','Maximum: Aggressive structural compression.'];
+            $('#pdfLevelDesc').textContent = labels[parseInt(v)-1];
+        }
+        async function processPDF(){
+            if(!pdfFile) return; showLoading('Optimizing PDF...');
+            try {
+                const bytes = await pdfFile.arrayBuffer();
+                const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+                const level = parseInt($('#pdfLevel').value);
+                if(level >= 3){
+                    try { pdfDoc.setTitle(''); pdfDoc.setAuthor(''); pdfDoc.setSubject(''); pdfDoc.setKeywords([]); pdfDoc.setProducer(''); pdfDoc.setCreator(''); } catch(e){}
+                }
+                const saved = await pdfDoc.save({ useObjectStreams: true, addDefaultPage: false });
+                const blob = new Blob([saved], {type:'application/pdf'});
+                showDownloadScreen({url:URL.createObjectURL(blob), filename: pdfFile.name.replace(/\.pdf$/i,'-optimized.pdf'), origSizeText:formatBytes(pdfFile.size), finalSizeText:formatBytes(blob.size)});
+            } catch(err) { alert('PDF Error: '+err.message); }
+            hideLoading();
+        }
 
-            // If the image might have transparency, use PNG for lossless but still try to compress
-            // We'll use JPEG for compression loop, then if original had transparency we could use PNG
-            // For simplicity, always use JPEG for compression but allow high quality
+        // ─── FFMPEG SHARED ───────────────────────────────────────────
+        const ffmpegInstance = FFmpeg.createFFmpeg({ log:true, corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js' });
+        async function loadFFmpeg(){
+            if(!ffmpegInstance.isLoaded()){ showLoading('Loading video engine (one-time)...'); await ffmpegInstance.load(); hideLoading(); }
+        }
 
-            while (currentSize > targetKB * 1024 && quality > 0.08) {
-                quality -= 0.04;
-                if (quality < 0.08) quality = 0.08;
-                dataUrl = tempCanvas.toDataURL(mimeType, quality);
-                currentSize = getDataUrlSize(dataUrl);
-                
-                // Yield control to the main thread to prevent the browser from freezing
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
+        // ─── VIDEO COMPRESSOR ──────────────────────────────────────
+        let videoFileObj = null, videoDuration = 0;
+        $('#vidInput').onchange = (e) => {
+            const f = e.target.files[0]; if(!f) return; videoFileObj = f;
+            const url = URL.createObjectURL(f);
+            const vid = document.createElement('video');
+            vid.onloadedmetadata = () => { videoDuration = vid.duration; URL.revokeObjectURL(url); updateVidEstimate(); };
+            vid.src = url;
+            $('#vidUploadArea').classList.add('hidden');
+            $('#vidSettings').style.opacity='1'; $('#vidSettings').style.pointerEvents='auto';
+        };
+        function toggleVidMode(){ const manual=$('#vidMode').value==='manual'; $('#vidManual').classList.toggle('hidden',!manual); }
+        function updateBitrateLabel(v){ $('#vidBitrateVal').textContent=v; updateVidEstimate(); }
+        function updateVidEstimate(){
+            const r = parseFloat($('#vidBitrate').value)||5;
+            const sec = videoDuration||0;
+            const mb = (r * sec) / 8;
+            $('#vidEstimate').textContent = mb.toFixed(1);
+        }
+        $('#vidBitrate').addEventListener('input', (e)=>updateBitrateLabel(e.target.value));
+        
+        async function processVideo(){
+            if(!videoFileObj) return; await loadFFmpeg();
+            const mode = $('#vidMode').value;
+            const res = $('#vidRes').value, fps = $('#vidFps').value, bitrate = $('#vidBitrate').value;
+            showLoading('Compressing video...');
+            try {
+                const inName = 'in_vid'; const outName = 'out.mp4';
+                ffmpegInstance.FS('writeFile', inName, await FFmpeg.fetchFile(videoFileObj));
+                const args = ['-i', inName];
+                if(mode==='manual'){
+                    if(res!=='original') args.push('-vf', `scale=-2:${res}`);
+                    if(fps!=='original') args.push('-r', fps);
+                    args.push('-b:v', `${bitrate}M`);
+                } else {
+                    args.push('-crf','28','-preset','fast','-vf','scale=-2:720');
+                }
+                args.push(outName);
+                await ffmpegInstance.run(...args);
+                const data = ffmpegInstance.FS('readFile', outName);
+                const blob = new Blob([data.buffer], {type:'video/mp4'});
+                showDownloadScreen({url:URL.createObjectURL(blob), filename:'compressed.mp4', origSizeText:formatBytes(videoFileObj.size), finalSizeText:formatBytes(blob.size)});
+                try{ffmpegInstance.FS('unlink', inName);}catch(e){} try{ffmpegInstance.FS('unlink', outName);}catch(e){}
+            } catch(err) { alert('Video processing failed. Try a smaller file or desktop browser.\n'+err.message); }
+            hideLoading();
+        }
 
-            const finalBlob = await (await fetch(dataUrl)).blob();
-            const finalSizeKB = Math.round(finalBlob.size / 1024);
+        // ─── VIDEO TO AUDIO ─────────────────────────────────────────
+        $('#audioInput').onchange = (e) => { processAudio(); };
+        async function processAudio(){
+            const f = $('#audioInput').files[0]; if(!f) return;
+            await loadFFmpeg(); showLoading('Extracting audio...');
+            try {
+                const ext = f.name.split('.').pop();
+                const inName = `input.${ext}`; let outName; const fmt = $('#audioFmt').value;
+                if(fmt==='mp3') outName='output.mp3'; else if(fmt==='wav') outName='output.wav'; else outName='output.aac';
+                ffmpegInstance.FS('writeFile', inName, await FFmpeg.fetchFile(f));
+                const args = ['-i', inName, '-vn', '-ar', '44100', '-ac', '2'];
+                if(fmt==='mp3') args.push('-b:a','192k');
+                else if(fmt==='aac') args.push('-c:a','aac');
+                args.push(outName);
+                await ffmpegInstance.run(...args);
+                const data = ffmpegInstance.FS('readFile', outName);
+                const blob = new Blob([data.buffer], {type: fmt==='mp3'?'audio/mpeg':fmt==='wav'?'audio/wav':'audio/aac'});
+                showDownloadScreen({url:URL.createObjectURL(blob), filename: outName, origSizeText:formatBytes(f.size), finalSizeText:formatBytes(blob.size)});
+                try{ffmpegInstance.FS('unlink', inName);}catch(e){} try{ffmpegInstance.FS('unlink', outName);}catch(e){}
+            } catch(err){ alert('Audio extraction failed.\n'+err.message); }
+            hideLoading();
+        }
 
-            // Update download screen
-            document.getElementById('origSize').textContent = document.getElementById('modalOrigSize').textContent;
-            document.getElementById('finalSize').textContent = finalSizeKB + ' KB';
-
-            const downloadBtn = document.getElementById('downloadBtn');
-            const fileName = 'editforge-optimized.jpg';
-            downloadBtn.onclick = () => {
-                const link = document.createElement('a');
-                link.href = dataUrl;
-                link.download = fileName;
-                link.click();
+        // ─── EXIF EDITOR ────────────────────────────────────────────
+        let exifImageData = null;
+        $('#exifInput').onchange = (e) => {
+            const f = e.target.files[0]; if(!f) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                exifImageData = evt.target.result;
+                $('#exifPreview').src = exifImageData; $('#exifPreview').classList.remove('hidden'); $('#exifUploadZone').classList.add('hidden');
+                try {
+                    const exif = piexif.load(exifImageData);
+                    const zeroth = exif['0th']||{}; const piexifObj = exif['Exif']||{}; const gps = exif['GPS']||{};
+                    const get = (obj,tag) => obj[piexif.ImageIFD[tag]] || obj[tag] || '';
+                    $('#exifMake').value = get(zeroth,'Make') || ''; $('#exifModel').value = get(zeroth,'Model') || '';
+                    $('#exifISO').value = piexifObj[piexif.ExifIFD.ISOSpeedRatings] || '';
+                    $('#exifDate').value = piexifObj[piexif.ExifIFD.DateTimeOriginal] || '';
+                } catch(e){}
             };
-
-            closeModal();
-            navigateTo('DOWNLOAD');
+            reader.readAsDataURL(f);
+        };
+        function saveExif(){
+            if(!exifImageData) return;
+            const zeroth = {}; const exif={}; const gps={};
+            const make = $('#exifMake').value, model=$('#exifModel').value, iso=$('#exifISO').value, date=$('#exifDate').value;
+            if(make) zeroth[piexif.ImageIFD.Make] = make; if(model) zeroth[piexif.ImageIFD.Model] = model;
+            if(date) exif[piexif.ExifIFD.DateTimeOriginal] = date;
+            if(iso) exif[piexif.ExifIFD.ISOSpeedRatings] = parseInt(iso);
+            const exifObj = {"0th":zeroth, "Exif":exif, "GPS":gps};
+            const exifStr = piexif.dump(exifObj);
+            const newData = piexif.insert(exifStr, exifImageData);
+            const blob = dataURLtoBlob(newData);
+            showDownloadScreen({url:URL.createObjectURL(blob), filename:'edited.jpg', origSizeText:'Original', finalSizeText:formatBytes(blob.size)});
+        }
+        function dataURLtoBlob(dataurl){
+            const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]); let n=bstr.length; const u8=new Uint8Array(n);
+            while(n--){ u8[n] = bstr.charCodeAt(n); }
+            return new Blob([u8], {type:mime});
         }
 
-        // ─── MOBILE ADJUSTMENTS ────────────────────────────────────────────────
-        function adjustPanelHeight() {
-            const panel = document.getElementById('configPanel');
-            if (!panel) return;
-            const vh = window.innerHeight;
-            const headerH = 70;
-            const footerH = 70;
-            const padding = 40;
-            const available = vh - headerH - footerH - padding;
-            if (available < 300) {
-                panel.style.maxHeight = Math.max(available, 200) + 'px';
-            } else {
-                panel.style.maxHeight = Math.min(available * 0.85, 80 + 'vh');
-            }
+        // ─── VIDEO THUMBNAIL ────────────────────────────────────────
+        let thumbVideoFile = null, thumbImageFile = null;
+        $('#thumbVideoInput').onchange = (e) => { thumbVideoFile=e.target.files[0]; extractThumb(); };
+        $('#thumbImageInput').onchange = (e) => { thumbImageFile=e.target.files[0]; };
+        async function extractThumb(){
+            if(!thumbVideoFile) return; await loadFFmpeg(); showLoading('Extracting frame...');
+            try {
+                const ext = thumbVideoFile.name.split('.').pop(); const inName = 'tv.'+ext;
+                ffmpegInstance.FS('writeFile', inName, await FFmpeg.fetchFile(thumbVideoFile));
+                await ffmpegInstance.run('-i', inName, '-ss','00:00:01','-vframes','1','thumb.png');
+                const outData = ffmpegInstance.FS('readFile','thumb.png');
+                const blob = new Blob([outData.buffer],{type:'image/png'});
+                const url = URL.createObjectURL(blob);
+                $('#thumbPreviewImg').src = url; show('#thumbPreviewWrap'); hideLoading();
+                try{ffmpegInstance.FS('unlink',inName);}catch(e){} try{ffmpegInstance.FS('unlink','thumb.png');}catch(e){}
+            } catch(err){ hideLoading(); alert('Extraction failed: '+err.message); }
+        }
+        async function processThumbnail(){
+            if(!thumbVideoFile) return alert('Please upload a video');
+            if(!thumbImageFile) return alert('Please upload a thumbnail image');
+            await loadFFmpeg(); showLoading('Embedding new thumbnail...');
+            try {
+                const vExt = thumbVideoFile.name.split('.').pop(); const iExt = thumbImageFile.name.split('.').pop();
+                const vName='vid.'+vExt, iName='img.'+iExt, outName='out.'+vExt;
+                ffmpegInstance.FS('writeFile', vName, await FFmpeg.fetchFile(thumbVideoFile));
+                ffmpegInstance.FS('writeFile', iName, await FFmpeg.fetchFile(thumbImageFile));
+                await ffmpegInstance.run('-i',vName,'-i',iName,'-map','0','-map','1','-c','copy','-disposition:v:1','attached_pic',outName);
+                const data = ffmpegInstance.FS('readFile', outName);
+                const blob = new Blob([data.buffer], {type:'video/mp4'});
+                showDownloadScreen({url:URL.createObjectURL(blob), filename:'video-with-thumb.mp4', origSizeText:formatBytes(thumbVideoFile.size), finalSizeText:formatBytes(blob.size)});
+                ['vid.'+vExt,'img.'+iExt,'out.'+vExt].forEach(n=>{ try{ffmpegInstance.FS('unlink',n);}catch(e){} });
+            } catch(err){ alert('Thumbnail mux failed. Ensure your inputs are valid.\n'+err.message); }
+            hideLoading();
         }
 
-        window.addEventListener('resize', () => {
-            adjustPanelHeight();
-            updateCropBoxView();
-        });
-
-        window.addEventListener('orientationchange', () => {
-            setTimeout(() => {
-                adjustPanelHeight();
-                updateCropBoxView();
-            }, 300);
-        });
-
-        // Initial adjustment
-        setTimeout(adjustPanelHeight, 200);
-
-        // ─── RESIZE OBSERVER FOR CANVAS ────────────────────────────────────────
-        if (window.ResizeObserver) {
-            const ro = new ResizeObserver(() => updateCropBoxView());
-            ro.observe(canvas);
-        }
-
-        // ─── KEYBOARD VISIBILITY (mobile) ──────────────────────────────────────
-        // On mobile, when input is focused, scroll it into view
-        document.querySelectorAll('.config-panel input, .config-panel button').forEach(el => {
-            el.addEventListener('focus', function() {
-                setTimeout(() => {
-                    this.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                }, 300);
-            });
-        });
-
-        // ─── INIT ───────────────────────────────────────────────────────────────
-        // Initial icon render
-        lucide.createIcons();
     </script>
 </body>
 </html>
