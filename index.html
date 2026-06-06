@@ -74,6 +74,14 @@
         .screen { display: none; animation: fadeIn 0.4s ease; }
         .screen:not(.hidden) { display: block; }
         .hidden { display: none !important; }
+        canvas {
+            max-width: 100% !important;
+            max-height: 60vh !important;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+
 
         /* Typography helpers for content */
         .h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -1px; line-height: 1.2; }
