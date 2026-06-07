@@ -165,6 +165,19 @@
             background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius);
             padding: 20px; display: flex; justify-content: space-around; align-items: center; margin: 2rem 0; font-weight: 700; flex-wrap: wrap; gap: 12px;
         }
+                /* File Size Modal */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+            display: none; justify-content: center; align-items: center;
+            z-index: 1000; padding: 20px;
+        }
+        .modal {
+            background: var(--bg); padding: 32px; border-radius: var(--radius);
+            width: 100%; max-width: 450px; text-align: center;
+            box-shadow: var(--glass-shadow); border: 1px solid var(--glass-border);
+        }
+
 
         /* Misc */
         .img-preview { max-width: 100%; border-radius: 12px; border: 1px solid var(--glass-border); background: #fff; }
@@ -558,6 +571,25 @@
             </div>
         </section>
     </main>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+            <i data-lucide="scale" size="40" color="var(--accent)" style="margin-bottom:1rem;"></i>
+            <h2 class="h2">Optimize Final File Size</h2>
+            <p style="color:var(--muted); margin-bottom:1.5rem; font-size:1.1rem;">
+                Original Size: <span id="modalOrigSize" style="font-weight:700; color:var(--text);">0 KB</span>
+            </p>
+
+            <div class="control-group" style="margin-bottom:2rem; text-align:left;">
+                <label>Target Output Size (KB)</label>
+                <input type="number" id="targetKB" placeholder="e.g. 200" inputmode="numeric" oninput="document.getElementById('targetSlider').value = Math.max(5, Math.min(5000, parseInt(this.value)||5))">
+                <input type="range" id="targetSlider" min="5" max="5000" step="1" oninput="document.getElementById('targetKB').value = this.value" style="margin-top:12px;">
+            </div>
+
+            <button class="btn btn-primary btn-block" onclick="generateFinalImage()">Confirm & Generate</button>
+            <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
 
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="spinner"></div>
@@ -732,7 +764,28 @@
             if(!currentImage) return;
             generateFinalImage();
         }
+                // ─── CUSTOM COMPRESSION & MODAL CONTROLLERS ───────────────────
+        function openImgModal(){
+            if(!currentImage) return;
+            // Capture raw quality stream to evaluate real dimensions
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            const sizeBytes = Math.round(dataUrl.length * 0.75);
+            $('#modalOrigSize').textContent = Math.round(sizeBytes / 1024) + ' KB';
+            $('#targetKB').value = Math.round(sizeBytes / 1024);
+            $('#targetSlider').value = Math.round(sizeBytes / 1024);
+            
+            // Present display layer
+            $('#modalOverlay').style.display = 'flex';
+        }
+
+        function closeModal() {
+            $('#modalOverlay').style.display = 'none';
+        }
+
         async function generateFinalImage(){
+            // Map desired size restriction criteria
+            const targetKB = parseInt($('#targetKB').value) || 500;
+            
             let finalW = isCropping ? Math.round(cropW) : canvas.width;
             let finalH = isCropping ? Math.round(cropH) : canvas.height;
             if(finalW<1) finalW=1; if(finalH<1) finalH=1;
@@ -740,13 +793,24 @@
             tCtx.fillStyle='#FFFFFF'; tCtx.fillRect(0,0,finalW,finalH);
             const srcX=isCropping?cropX:0, srcY=isCropping?cropY:0, srcW=isCropping?cropW:canvas.width, srcH=isCropping?cropH:canvas.height;
             tCtx.drawImage(canvas, srcX, srcY, srcW, srcH, 0, 0, finalW, finalH);
-            // compression loop
+            
+            // Re-evaluating size matching matrix
             let quality=0.92, mime='image/jpeg', dataUrl=tC.toDataURL(mime,quality);
-            let sizeBytes = Math.round(dataUrl.length*0.75); // rough
-            while(sizeBytes > 300*1024 && quality > 0.1){ quality-=0.05; if(quality<0.08) quality=0.08; dataUrl=tC.toDataURL(mime,quality); sizeBytes=Math.round(dataUrl.length*0.75); await new Promise(r=>setTimeout(r,0)); }
+            let sizeBytes = Math.round(dataUrl.length*0.75); 
+            while(sizeBytes > targetKB * 1024 && quality > 0.08){ 
+                quality-=0.04; 
+                if(quality<0.08) quality=0.08; 
+                dataUrl=tC.toDataURL(mime,quality); 
+                sizeBytes=Math.round(dataUrl.length*0.75); 
+                await new Promise(r=>setTimeout(r,0)); 
+            }
             const blob = await (await fetch(dataUrl)).blob();
+            
+            closeModal();
             showDownloadScreen({url: URL.createObjectURL(blob), filename:'editforge-image.jpg', origSizeText:formatBytes(originalImage.size||0), finalSizeText:formatBytes(blob.size)});
         }
+
+        
 
         // ─── PDF TOOL ───────────────────────────────────────────────
         let pdfFile = null;
