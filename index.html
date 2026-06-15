@@ -973,22 +973,57 @@
             } catch(err){ hideLoading(); alert('Extraction failed: '+err.message); }
         }
         async function processThumbnail(){
-            if(!thumbVideoFile) return alert('Please upload a video');
-            if(!thumbImageFile) return alert('Please upload a thumbnail image');
-            await loadFFmpeg(); showLoading('Embedding new thumbnail...');
-            try {
-                const vExt = thumbVideoFile.name.split('.').pop(); const iExt = thumbImageFile.name.split('.').pop();
-                const vName='vid.'+vExt, iName='img.'+iExt, outName='out.'+vExt;
-                ffmpegInstance.FS('writeFile', vName, await FFmpeg.fetchFile(thumbVideoFile));
-                ffmpegInstance.FS('writeFile', iName, await FFmpeg.fetchFile(thumbImageFile));
-                await ffmpegInstance.run('-i',vName,'-i',iName,'-map','0','-map','1','-c','copy','-disposition:v:1','attached_pic',outName);
-                const data = ffmpegInstance.FS('readFile', outName);
-                const blob = new Blob([data.buffer], {type:'video/mp4'});
-                showDownloadScreen({url:URL.createObjectURL(blob), filename:'video-with-thumb.mp4', origSizeText:formatBytes(thumbVideoFile.size), finalSizeText:formatBytes(blob.size)});
-                ['vid.'+vExt,'img.'+iExt,'out.'+vExt].forEach(n=>{ try{ffmpegInstance.FS('unlink',n);}catch(e){} });
-            } catch(err){ alert('Thumbnail mux failed. Ensure your inputs are valid.\n'+err.message); }
-            hideLoading();
-        }
+    if(!thumbVideoFile) return alert('Please upload a video');
+    if(!thumbImageFile) return alert('Please upload a thumbnail image');
+    await loadFFmpeg(); 
+    showLoading('Embedding new thumbnail...');
+    
+    try {
+        const vExt = thumbVideoFile.name.split('.').pop(); 
+        const iExt = thumbImageFile.name.split('.').pop();
+        const vName = 'vid.' + vExt; 
+        const iName = 'img.' + iExt; 
+        const outName = 'out.' + vExt;
+        
+        // Write source files to the virtual file system
+        ffmpegInstance.FS('writeFile', vName, await FFmpeg.fetchFile(thumbVideoFile));
+        ffmpegInstance.FS('writeFile', iName, await FFmpeg.fetchFile(thumbImageFile));
+        
+        // OPTIMIZED MP4/MOV COMPATIBLE STREAM COMBINATION
+        // Maps the static picture asset to the standard container thumbnail metadata index
+        await ffmpegInstance.run(
+            '-i', vName, 
+            '-i', iName, 
+            '-map', '0:v', 
+            '-map', '0:a?', // Optional flag matching in case video has no audio channel
+            '-map', '1:v', 
+            '-c', 'copy', 
+            '-c:v:1', 'mjpeg', 
+            '-disposition:v:1', 'attached_pic', 
+            outName
+        );
+        
+        const data = ffmpegInstance.FS('readFile', outName);
+        const blob = new Blob([data.buffer], {type: `video/${vExt === 'mov' ? 'quicktime' : 'mp4'}`});
+        
+        showDownloadScreen({
+            url: URL.createObjectURL(blob), 
+            filename: `video-with-thumb.${vExt}`, 
+            origSizeText: formatBytes(thumbVideoFile.size), 
+            finalSizeText: formatBytes(blob.size)
+        });
+        
+        // Cleanup virtual environment file paths
+        [vName, iName, outName].forEach(n => { 
+            try { ffmpegInstance.FS('unlink', n); } catch(e){} 
+        });
+        
+    } catch(err) { 
+        console.error(err);
+        alert('Thumbnail mux failed. Ensure your inputs are valid.\n' + err.message); 
+    }
+    hideLoading();
+}
 
     </script>
 </body>
